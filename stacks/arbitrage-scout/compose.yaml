@@ -72,6 +72,11 @@ services:
       # <DATA_ROOT>/config/config.yaml legen und hier
       # /app/userconfig/config.yaml eintragen.
       SCOUT_CONFIG_FILE: ${SCOUT_CONFIG_FILE:-config.yaml}
+      # Betriebsmodus auf diesem Server, ueberschreibt sources.provider aus
+      # config.yaml: "api" = Einkaufsliste data/purchases.csv, passende
+      # eBay-Angebote sucht der Scout selbst (braucht EBAY_APP_ID/EBAY_CERT_ID).
+      # "csv" = fertige Paare aus data/offers.csv.
+      SCOUT__SOURCES__PROVIDER: ${SCOUT__SOURCES__PROVIDER:-api}
     volumes:
       - ${DATA_ROOT:-/srv/apps/arbitrage-scout}/data:/app/data
       - ${DATA_ROOT:-/srv/apps/arbitrage-scout}/logs:/app/logs

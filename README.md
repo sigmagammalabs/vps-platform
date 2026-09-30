@@ -211,19 +211,23 @@ dann automatisch übernommen.
 *Deploy the stack*. Kurz darauf erscheinen beide Apps auf der Startseite, ihre
 Zeitpläne in Ofelia.
 
-### 7. Scout-Daten übernehmen
+### 7. Scout-Einkaufsliste übernehmen
 
-Der Scout liest seine Angebote aus `data/` (`sources.provider` in
-`config.yaml`: `csv` → `offers.csv`, `api` → `purchases.csv`). Diese Dateien
-sind nicht im Repo und damit auch nicht im Image – ohne sie scheitert der
-tägliche Lauf. Vom eigenen Rechner (PowerShell) kopieren:
+Auf dem Server läuft der Scout im Modus `api` (Stack-Variable
+`SCOUT__SOURCES__PROVIDER`): Er liest die Einkaufsliste
+`data/purchases.csv` und sucht passende eBay-Angebote selbst. Die Liste ist
+nicht im Repo und damit auch nicht im Image – ohne sie bricht der tägliche Lauf
+mit „Einkaufsliste nicht gefunden“ ab. Spalten wie in
+`data/purchases.example.csv`; Pflicht sind `title` und `price_eur`, eine `ean`
+macht die eBay-Suche deutlich präziser. Vom eigenen Rechner (PowerShell)
+kopieren:
 
 ```powershell
-scp "F:\AI-CODE-AREA\Arbitrage Selling Scout\data\offers.csv" root@vps:/srv/apps/arbitrage-scout/data/
+scp "F:\AI-CODE-AREA\Arbitrage Selling Scout\data\purchases.csv" root@vps:/srv/apps/arbitrage-scout/data/
 ```
 
 ```bash
-ssh root@vps chown 10001:10001 /srv/apps/arbitrage-scout/data/offers.csv
+ssh root@vps chown app:app /srv/apps/arbitrage-scout/data/purchases.csv
 ```
 
 Mit `--admin-user` ist root-Login gesperrt: dann nach `/tmp` kopieren und auf
