@@ -1,3 +1,9 @@
 # Secrets und lokale Einstellungen - nie committen
 .env
 stack.env
+
+# SSH-Schluessel (lokal abgelegt, das Repo ist oeffentlich)
+keygen/
+id_*
+*.pem
+*.key
