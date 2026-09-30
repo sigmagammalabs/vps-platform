@@ -332,9 +332,11 @@ setup_dirs() {
     # Die App-Images laufen als UID 10001. Ein gleichnamiger Systembenutzer auf
     # dem Host macht Besitzer lesbar (ls zeigt "app") und wird fuer logrotate
     # gebraucht, das bei "su" einen Namen statt einer Nummer verlangt.
+    # Bewusst ohne --system: Systemkonten liegen unter UID 1000, useradd warnt
+    # sonst. Login ist trotzdem ausgeschlossen (nologin, kein Passwort).
     if ! getent passwd 10001 >/dev/null; then
-        getent group 10001 >/dev/null || groupadd --system --gid 10001 app
-        useradd --system --uid 10001 --gid 10001 --no-create-home \
+        getent group 10001 >/dev/null || groupadd --gid 10001 app
+        useradd --uid 10001 --gid 10001 --no-create-home \
             --home-dir /nonexistent --shell /usr/sbin/nologin app
     fi
     ok "Benutzer $(getent passwd 10001 | cut -d: -f1) (UID 10001) = Benutzer in den App-Containern"
