@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# Pre-Market Screener (Wertpapiere Watchliste)
+# Repo:  https://github.com/sigmagammalabs/Stock-Pre-Market-Screener
+# Image: ghcr.io/sigmagammalabs/premarket-screener (gebaut per GitHub Actions)
+#
+# Ein Container, zwei Aufgaben:
+#   - dauerhaft: Telegram-Listener (main.py listen, Freitext-Kommandos)
+#   - Mo-Fr:     Scan mit CSV-Export, Telegram-Versand und KI-Briefing,
+#                von Ofelia per "docker exec" in diesem Container gestartet
+#
+# Deployment: Portainer -> Stacks -> Add stack -> Repository (README.md)
+# Secrets:    als Umgebungsvariablen im Portainer-Stack (Vorlage: .env.example)
+# ---------------------------------------------------------------------------
+
+name: premarket-screener
+
+services:
+  init-dirs:
+    image: busybox:stable
+    restart: "no"
+    network_mode: none
+    command:
+      - sh
+      - -c
+      - mkdir -p /target/watchlist && chown -R 10001:10001 /target/watchlist
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/premarket-screener}:/target
+
+  screener:
+    image: ghcr.io/sigmagammalabs/premarket-screener:${IMAGE_TAG:-latest}
+    container_name: premarket-screener
+    restart: unless-stopped
+    init: true
+    depends_on:
+      init-dirs:
+        condition: service_completed_successfully
+    # Ohne Telegram-Zugangsdaten wuerde "main.py listen" sofort beenden und der
+    # Container neu starten - dann stattdessen Leerlauf, der geplante Scan per
+    # docker exec funktioniert weiter (nur eben ohne Telegram-Versand).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -n "$${TELEGRAM_BOT_TOKEN}" ] && [ -n "$${TELEGRAM_CHAT_ID}" ]; then
+          exec python main.py listen --universe ${SCREENER_UNIVERSE:-eurostoxx50}
+        fi
+        echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID leer: Listener aus, Container bleibt fuer geplante Scans aktiv."
+        exec sleep infinity
+    environment:
+      TZ: Europe/Berlin
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_API_SECRET: ${ALPACA_API_SECRET:-}
+      FMP_API_KEY: ${FMP_API_KEY:-}
+    volumes:
+      # Exporte (watchlist_*.csv) und screener.log
+      - ${DATA_ROOT:-/srv/apps/premarket-screener}/watchlist:/app/watchlist
+    mem_limit: ${MEM_LIMIT:-1g}
+    cpus: ${CPUS:-1.0}
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      # --- Zeitplan (Ofelia, Zeitzone aus platform/.env) ---
+      # Mo-Fr 08:15, 45 Min. vor Xetra-Eroeffnung (EURO STOXX 50)
+      ofelia.enabled: "true"
+      ofelia.job-exec.premarket-screener-scan.schedule: "${SCREENER_SCHEDULE:-15 8 * * 1-5}"
+      ofelia.job-exec.premarket-screener-scan.command: "python main.py scan --universe ${SCREENER_UNIVERSE:-eurostoxx50} --export csv --notify-telegram --ai-briefing"
+      ofelia.job-exec.premarket-screener-scan.user: "10001"   # Ofelia-Default waere "nobody"
+      ofelia.job-exec.premarket-screener-scan.no-overlap: "true"
+      # --- Kachel auf der Startseite (Homepage) ---
+      homepage.group: Apps
+      homepage.name: Pre-Market Screener
+      homepage.icon: mdi-chart-line
+      homepage.description: "${SCREENER_UNIVERSE:-eurostoxx50} | Scan: ${SCREENER_SCHEDULE:-15 8 * * 1-5}"

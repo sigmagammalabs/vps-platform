@@ -1,0 +1,6 @@
+---
+# Zugriff auf die Docker-API nur lesend ueber den socket-proxy
+# (platform/compose.yaml). "local" ist der Name, auf den services.yaml verweist.
+local:
+  host: socket-proxy
+  port: 2375

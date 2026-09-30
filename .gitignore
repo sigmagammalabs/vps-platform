@@ -1,0 +1,3 @@
+# Secrets und lokale Einstellungen - nie committen
+.env
+stack.env

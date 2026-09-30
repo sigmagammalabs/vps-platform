@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# Vorlage fuer eine neue App. Kopieren nach stacks/<app-name>/ und alle
+# Stellen mit "myapp" ersetzen. Ausfuehrlich: docs/neue-app.md
+#
+# Konventionen, auf die sich die Plattform verlaesst:
+#   - eigener Stack = eigenes Netzwerk (Apps sehen sich gegenseitig nicht)
+#   - Daten unter /srv/apps/<app>/..., Besitzer = UID im Image (hier 10001)
+#   - Secrets nur als Umgebungsvariablen, nie im Image oder im Repo
+#   - Weboberflaeche (falls vorhanden) nur auf 127.0.0.1, freigeben ueber
+#     platform/serve.conf
+#   - Zeitplaene als Ofelia-Labels, Startseiten-Kachel als Homepage-Labels
+# ---------------------------------------------------------------------------
+
+name: myapp
+
+services:
+  init-dirs:
+    image: busybox:stable
+    restart: "no"
+    network_mode: none
+    command:
+      - sh
+      - -c
+      - mkdir -p /target/data && chown -R 10001:10001 /target/data
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/myapp}:/target
+
+  app:
+    image: ghcr.io/sigmagammalabs/myapp:${IMAGE_TAG:-latest}
+    container_name: myapp
+    restart: unless-stopped
+    init: true
+    depends_on:
+      init-dirs:
+        condition: service_completed_successfully
+    # command: ["..."]            # Dauerprozess; bei reinen Cron-Apps z. B.
+    #                              # ["sleep", "infinity"] als Exec-Ziel fuer Ofelia
+    environment:
+      TZ: Europe/Berlin
+      MYAPP_API_KEY: ${MYAPP_API_KEY:-}
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/myapp}/data:/app/data
+    # Nur wenn die App eine Weboberflaeche hat - dann Zeile in platform/serve.conf:
+    # ports:
+    #   - "127.0.0.1:8100:8000"
+    mem_limit: ${MEM_LIMIT:-512m}
+    cpus: ${CPUS:-1.0}
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      # Zeitplan (optional) - Job-Namen muessen VPS-weit eindeutig sein
+      ofelia.enabled: "true"
+      ofelia.job-exec.myapp-daily.schedule: "${MYAPP_SCHEDULE:-0 7 * * *}"
+      ofelia.job-exec.myapp-daily.command: "python main.py run"
+      ofelia.job-exec.myapp-daily.user: "10001"
+      ofelia.job-exec.myapp-daily.no-overlap: "true"
+      # Kachel auf der Startseite
+      homepage.group: Apps
+      homepage.name: My App
+      homepage.icon: mdi-application
+      homepage.description: Kurzbeschreibung
+      # homepage.href: https://vps.tailXXXX.ts.net:8100   # falls Weboberflaeche

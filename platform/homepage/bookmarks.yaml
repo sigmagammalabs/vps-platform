@@ -1,0 +1,16 @@
+---
+- Verwaltung:
+    - Tailscale:
+        - href: https://login.tailscale.com/admin/machines
+          icon: tailscale.png
+    - Hetzner Cloud:
+        - href: https://console.hetzner.cloud/
+          icon: hetzner.png
+
+- Code:
+    - Arbitrage Scout:
+        - href: https://github.com/sigmagammalabs/Arbitrage-Scout
+          icon: github.png
+    - Pre-Market Screener:
+        - href: https://github.com/sigmagammalabs/Stock-Pre-Market-Screener
+          icon: github.png

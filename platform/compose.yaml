@@ -1,0 +1,166 @@
+# ---------------------------------------------------------------------------
+# Plattform-Stack: Verwaltung, Monitoring, Logs, Zeitplanung
+#
+#   portainer     Container/Stacks verwalten, Apps aus Git deployen
+#   homepage      Startseite mit Status + CPU/RAM je Container
+#   beszel        Monitoring mit Verlauf und Alarmen (Hub + Agent)
+#   dozzle        Live-Logs aller Container
+#   ofelia        Cron fuer Container (Zeitplaene stehen als Labels an den Apps)
+#   socket-proxy  Nur-Lese-Zugriff auf die Docker-API fuer homepage/dozzle
+#
+# Starten/aktualisieren mit scripts/platform.sh - NICHT ueber Portainer, weil
+# Portainer selbst Teil dieses Stacks ist.
+#
+# Alle Weboberflaechen lauschen nur auf 127.0.0.1. Von aussen erreichbar sind
+# sie ausschliesslich ueber Tailscale Serve (HTTPS im Tailnet, siehe serve.conf).
+# ---------------------------------------------------------------------------
+
+name: platform
+
+services:
+  portainer:
+    image: portainer/portainer-ce:lts
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    # Falls Portainer hinter Tailscale Serve "Forbidden - origin invalid" meldet
+    # (siehe docs/betrieb.md): einkommentieren. Format je nach Version:
+    #   bis 2.39:  vps.tailXXXX.ts.net
+    #   ab 2.41:   https://vps.tailXXXX.ts.net:9443
+    # environment:
+    #   TRUSTED_ORIGINS: ${TS_FQDN}
+    security_opt:
+      - no-new-privileges:true
+
+  socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: socket-proxy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+    environment:
+      CONTAINERS: 1   # Container auflisten, Logs, Stats
+      INFO: 1         # Systeminfo (Dozzle)
+      EVENTS: 1       # Start/Stop-Ereignisse (Dozzle)
+      PING: 1
+      VERSION: 1
+      POST: 0         # nur lesen - keine Aenderungen ueber diesen Weg
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    depends_on:
+      - socket-proxy
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: "${TS_FQDN:?TS_FQDN fehlt in platform/.env},localhost:3000,127.0.0.1:3000"
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ:-Europe/Berlin}
+      LOG_TARGETS: stdout   # Config ist read-only gemountet
+      HOMEPAGE_VAR_PORTAINER_URL: https://${TS_FQDN}:9443
+      HOMEPAGE_VAR_BESZEL_URL: https://${TS_FQDN}:8090
+      HOMEPAGE_VAR_DOZZLE_URL: https://${TS_FQDN}:8080
+      HOMEPAGE_VAR_OFELIA_URL: https://${TS_FQDN}:8081
+    volumes:
+      - ./homepage:/app/config:ro
+    networks:
+      - default
+      - docker-api
+    security_opt:
+      - no-new-privileges:true
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    depends_on:
+      - socket-proxy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      DOZZLE_REMOTE_HOST: "tcp://socket-proxy:2375|vps"
+      DOZZLE_NO_ANALYTICS: "true"
+    networks:
+      - default
+      - docker-api
+    security_opt:
+      - no-new-privileges:true
+
+  ofelia:
+    image: ghcr.io/netresearch/ofelia:latest
+    container_name: ofelia
+    restart: unless-stopped
+    command: ["daemon", "--docker-events"]
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}   # alle Zeitplaene gelten in dieser Zeitzone
+      OFELIA_LOG_LEVEL: info
+      OFELIA_ENABLE_WEB: "true"
+      OFELIA_WEB_ADDRESS: ":8081"
+    volumes:
+      # Ofelia braucht "docker exec" - das geht nicht ueber den Nur-Lese-Proxy.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    security_opt:
+      - no-new-privileges:true
+
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: beszel
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      APP_URL: https://${TS_FQDN}:8090
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - beszel_data:/beszel_data
+      - beszel_socket:/beszel_socket
+
+  # Der Agent startet erst, wenn BESZEL_AGENT_KEY und BESZEL_AGENT_TOKEN in
+  # platform/.env stehen (scripts/platform.sh aktiviert dann das Profil "agent").
+  # Beide Werte zeigt Beszel beim Anlegen des Systems an (docs/betrieb.md).
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    container_name: beszel-agent
+    restart: unless-stopped
+    profiles: ["agent"]
+    network_mode: host   # noetig fuer die Netzwerkstatistik des Hosts
+    volumes:
+      - beszel_agent_data:/var/lib/beszel-agent
+      - beszel_socket:/beszel_socket
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      HUB_URL: http://127.0.0.1:8090
+      KEY: ${BESZEL_AGENT_KEY:-}
+      TOKEN: ${BESZEL_AGENT_TOKEN:-}
+
+networks:
+  default:
+    name: platform
+  docker-api:
+    name: platform-docker-api
+    internal: true   # kein Internet, nur socket-proxy <-> homepage/dozzle
+
+volumes:
+  portainer_data:
+    name: portainer_data
+  beszel_data:
+    name: beszel_data
+  beszel_agent_data:
+    name: beszel_agent_data
+  beszel_socket:
+    name: beszel_socket

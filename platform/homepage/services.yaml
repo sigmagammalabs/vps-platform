@@ -1,0 +1,30 @@
+---
+# Plattform-Dienste. Apps erscheinen automatisch ueber Docker-Labels
+# (homepage.group=Apps) und muessen hier NICHT eingetragen werden.
+# Die URLs kommen aus platform/compose.yaml (HOMEPAGE_VAR_*).
+
+- Plattform:
+    - Portainer:
+        icon: portainer.png
+        href: "{{HOMEPAGE_VAR_PORTAINER_URL}}"
+        description: Container und Stacks verwalten
+        server: local
+        container: portainer
+    - Beszel:
+        icon: beszel.png
+        href: "{{HOMEPAGE_VAR_BESZEL_URL}}"
+        description: Monitoring, Verlauf, Alarme
+        server: local
+        container: beszel
+    - Dozzle:
+        icon: dozzle.png
+        href: "{{HOMEPAGE_VAR_DOZZLE_URL}}"
+        description: Live-Logs aller Container
+        server: local
+        container: dozzle
+    - Ofelia:
+        icon: mdi-calendar-clock
+        href: "{{HOMEPAGE_VAR_OFELIA_URL}}"
+        description: Zeitplaene und Job-Verlauf
+        server: local
+        container: ofelia

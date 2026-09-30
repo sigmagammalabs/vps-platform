@@ -1,0 +1,96 @@
+# ---------------------------------------------------------------------------
+# Arbitrage Selling Scout
+# Repo:  https://github.com/sigmagammalabs/Arbitrage-Scout
+# Image: ghcr.io/sigmagammalabs/arbitrage-scout (gebaut per GitHub Actions)
+#
+# Ein Container, zwei Aufgaben:
+#   - dauerhaft: Telegram-Listener (/scan, /stop, /status)
+#   - taeglich:  Scout-Lauf, von Ofelia per "docker exec" IN DIESEM Container
+#                gestartet (Label ofelia.job-exec.*)
+#
+# Warum im selben Container: listener.py erkennt laufende Scans ueber die PID
+# im Lockfile logs/scout.lock und beendet sie mit SIGTERM. Das funktioniert nur
+# innerhalb desselben PID-Namespace - ein separater Cron-Container waere fuer
+# /stop und den Ueberlappungsschutz unsichtbar.
+#
+# Deployment: Portainer -> Stacks -> Add stack -> Repository (README.md)
+# Secrets:    als Umgebungsvariablen im Portainer-Stack (Vorlage: .env.example)
+# ---------------------------------------------------------------------------
+
+name: arbitrage-scout
+
+services:
+  # Legt die Datenverzeichnisse auf dem Host an und uebergibt sie dem
+  # App-Benutzer (UID 10001 im Image). Laeuft bei jedem Deploy kurz und endet.
+  init-dirs:
+    image: busybox:stable
+    restart: "no"
+    network_mode: none
+    command:
+      - sh
+      - -c
+      - mkdir -p /target/data /target/logs /target/config && chown -R 10001:10001 /target/data /target/logs
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/arbitrage-scout}:/target
+
+  scout:
+    image: ghcr.io/sigmagammalabs/arbitrage-scout:${IMAGE_TAG:-latest}
+    container_name: arbitrage-scout
+    restart: unless-stopped
+    init: true   # reapt Kindprozesse (/scan startet scout.py als Subprozess)
+    depends_on:
+      init-dirs:
+        condition: service_completed_successfully
+    # Ohne Telegram-Zugangsdaten wuerde listener.py sofort beenden und der
+    # Container in eine Neustartschleife laufen. Dann bleibt er stattdessen
+    # im Leerlauf, damit der geplante Lauf per docker exec weiter funktioniert.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -n "$${TELEGRAM_BOT_TOKEN}" ] && [ -n "$${TELEGRAM_CHAT_ID}" ]; then
+          exec python listener.py
+        fi
+        echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID leer: Listener aus, Container bleibt fuer geplante Laeufe aktiv."
+        exec sleep infinity
+    environment:
+      TZ: Europe/Berlin
+      # LLM - mindestens der Key des in config.yaml gewaehlten Providers
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # eBay Browse API (sources.provider: api)
+      EBAY_APP_ID: ${EBAY_APP_ID:-}
+      EBAY_CERT_ID: ${EBAY_CERT_ID:-}
+      # Amazon Creators API (nur bei sources.api.purchase_source: amazon)
+      AMAZON_CREATORS_CREDENTIAL_ID: ${AMAZON_CREATORS_CREDENTIAL_ID:-}
+      AMAZON_CREATORS_CREDENTIAL_SECRET: ${AMAZON_CREATORS_CREDENTIAL_SECRET:-}
+      AMAZON_CREATORS_CREDENTIAL_VERSION: ${AMAZON_CREATORS_CREDENTIAL_VERSION:-}
+      AMAZON_PARTNER_TAG: ${AMAZON_PARTNER_TAG:-}
+      # Telegram (Benachrichtigung + Listener)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Eigene config.yaml statt der im Image: Datei nach
+      # <DATA_ROOT>/config/config.yaml legen und hier
+      # /app/userconfig/config.yaml eintragen.
+      SCOUT_CONFIG_FILE: ${SCOUT_CONFIG_FILE:-config.yaml}
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/arbitrage-scout}/data:/app/data
+      - ${DATA_ROOT:-/srv/apps/arbitrage-scout}/logs:/app/logs
+      - ${DATA_ROOT:-/srv/apps/arbitrage-scout}/config:/app/userconfig:ro
+    mem_limit: ${MEM_LIMIT:-768m}
+    cpus: ${CPUS:-1.0}
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      # --- Zeitplan (Ofelia, Zeitzone aus platform/.env) ---
+      ofelia.enabled: "true"
+      ofelia.job-exec.arbitrage-scout-daily.schedule: "${SCOUT_SCHEDULE:-15 6 * * *}"
+      ofelia.job-exec.arbitrage-scout-daily.command: "python scout.py --notify-telegram"
+      ofelia.job-exec.arbitrage-scout-daily.user: "10001"   # Ofelia-Default waere "nobody"
+      ofelia.job-exec.arbitrage-scout-daily.no-overlap: "true"
+      # --- Kachel auf der Startseite (Homepage) ---
+      homepage.group: Apps
+      homepage.name: Arbitrage Scout
+      homepage.icon: mdi-cart-arrow-right
+      homepage.description: "Amazon/AliExpress -> eBay | Lauf: ${SCOUT_SCHEDULE:-15 6 * * *}"

@@ -1,0 +1,20 @@
+---
+# https://gethomepage.dev/configs/settings/
+title: VPS
+language: de
+theme: dark
+color: slate
+headerStyle: clean
+statusStyle: dot
+showStats: true        # CPU/RAM/Netz je Container direkt auf der Kachel
+hideVersion: true
+
+# Reihenfolge und Aufteilung der Gruppen. "Apps" fuellt sich automatisch
+# ueber Docker-Labels (homepage.group=Apps) - siehe stacks/_template.
+layout:
+  Plattform:
+    style: row
+    columns: 4
+  Apps:
+    style: row
+    columns: 3
