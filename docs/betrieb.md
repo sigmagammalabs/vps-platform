@@ -24,14 +24,19 @@ Alle Befehle auf dem Server als root (bzw. mit `sudo`) im Verzeichnis
 Der Container wird dabei neu erstellt. Ein gerade laufender Scan bricht ab –
 also nicht kurz vor/während eines geplanten Laufs ausrollen.
 
+Automatische GitOps-Updates bleiben aus: In Portainer 2.45 legt ein manuelles
+*Pull and redeploy* sie dauerhaft lahm
+([portainer#13298](https://github.com/portainer/portainer/issues/13298)).
+
 **Rollback:** In den Stack-Variablen `IMAGE_TAG=sha-<commit>` setzen (die
 Tags stehen im Repo unter *Packages*), *Pull and redeploy*. Zurück mit
 `IMAGE_TAG=latest`.
 
 ### Secrets und Einstellungen ändern
 
-Portainer → *Stacks → <app>* → Abschnitt *Environment variables* anpassen →
-*Pull and redeploy*. Welche Variablen es gibt, steht in
+Portainer → *Stacks → <app>* → **Edit stack settings** → Umgebungsvariablen
+anpassen → speichern → **Pull and redeploy** (erst damit wird der Container
+mit den neuen Werten neu erstellt). Welche Variablen es gibt, steht in
 `stacks/<app>/.env.example`.
 
 Portainer speichert diese Werte in seiner Datenbank (Volume `portainer_data`)

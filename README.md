@@ -203,13 +203,26 @@ Für jede App: *Stacks → Add stack*
 | Repository reference | `refs/heads/main` | ← gleich |
 | Compose path | `stacks/arbitrage-scout/compose.yaml` | `stacks/premarket-screener/compose.yaml` |
 | Environment variables | *Advanced mode* → Inhalt von `stacks/arbitrage-scout/.env.example` einfügen und ausfüllen | ← entsprechend |
-
-Optional *GitOps updates* einschalten (Polling, z. B. 5 Minuten, **ohne**
-„Force redeployment"): Änderungen an den Compose-Dateien in diesem Repo werden
-dann automatisch übernommen.
+| GitOps updates | aus | aus |
 
 *Deploy the stack*. Kurz darauf erscheinen beide Apps auf der Startseite, ihre
 Zeitpläne in Ofelia.
+
+Hinweise zu Portainer 2.45:
+
+- Die URL ohne Leerzeichen davor einfügen – sonst meldet Portainer nur
+  „Unable to test the connection“. Beim ersten Stack legt Portainer das Repo
+  automatisch als *Source* an (*App Delivery → Sources*), weitere Stacks können
+  sie auswählen.
+- Umgebungsvariablen eines bestehenden Stacks stehen unter
+  **Edit stack settings**; wirksam werden sie erst mit **Pull and redeploy**.
+- Automatische GitOps-Updates aus lassen: in 2.45 legt ein manuelles
+  *Pull and redeploy* sie dauerhaft lahm
+  ([portainer#13298](https://github.com/portainer/portainer/issues/13298)).
+  Updates daher von Hand, siehe [docs/betrieb.md](docs/betrieb.md#neue-version-ausrollen).
+- Jede App braucht ihren **eigenen Telegram-Bot**: zwei Listener mit demselben
+  Token nehmen sich gegenseitig die Nachrichten weg. Die Chat-ID ist die eigene
+  Telegram-ID (reine Zahl, z. B. über @userinfobot) – nicht der Bot-Name.
 
 ### 7. Scout-Einkaufsliste übernehmen
 
@@ -236,14 +249,13 @@ dem Server per `sudo mv` + `sudo chown` an die Stelle bringen.
 ### 8. Testen
 
 - Startseite: beide Apps grün, CPU/RAM sichtbar.
-- Telegram: `/status` an beide Bots.
+- Telegram: `/status` an den Scout-Bot, `/help` an den Screener-Bot.
 - Ofelia-Oberfläche: Jobs `arbitrage-scout-daily` und `premarket-screener-scan`
   mit nächster Ausführungszeit.
-- Läufe ohne API-Kosten, auf dem Server:
+- Prüfen ohne API-Kosten, auf dem Server:
 
   ```bash
   docker exec -u 10001 arbitrage-scout python scout.py --check-config
-  docker exec -u 10001 arbitrage-scout python scout.py --dry-run
   docker exec -u 10001 premarket-screener python main.py scan --universe custom --tickers SAP.DE,SIE.DE --min-gap-pct 0.1
   ```
 
@@ -263,7 +275,41 @@ bash /opt/platform/bootstrap/host-setup.sh --ssh-tailscale-only
 ```
 
 und in der Hetzner-Firewall die Regel für TCP 22 löschen. Notfallzugang bleibt
-die Web-Konsole in der Hetzner Cloud Console.
+die Web-Konsole in der Hetzner Cloud Console. Steht in einer SSH-Config die
+öffentliche IP als `HostName`, auf den Tailnet-Namen `vps` umstellen.
+
+## Zugriff von jedem Gerät
+
+Alles läuft über das Tailnet – ein Gerät, das nicht darin angemeldet ist,
+erreicht weder die Oberflächen noch SSH.
+
+**Weboberflächen** (PC, Laptop, Handy):
+
+1. Tailscale installieren: <https://tailscale.com/download>
+2. Mit **demselben Konto** anmelden wie der VPS.
+3. `https://<fqdn>` öffnen und als Lesezeichen speichern – von dort führen die
+   Kacheln zu Portainer, Beszel, Dozzle und Ofelia. `<fqdn>` steht in
+   `platform/.env` auf dem Server bzw. in der Tailscale-Adminkonsole beim
+   Gerät `vps` (Form `vps.tailXXXX.ts.net`).
+
+Eigene Logins haben nur Portainer und Beszel (Passwortmanager), Homepage,
+Dozzle und Ofelia schützt allein das Tailnet. Geht ein Gerät verloren: in der
+Tailscale-Adminkonsole unter *Machines* entfernen – damit ist es sofort
+ausgesperrt. Fremde Rechner ohne Tailscale (z. B. Arbeits-PC ohne
+Installationsrechte) haben bewusst keinen Zugang; dafür das Handy nehmen.
+
+**SSH** (nur für Wartung nötig – Container-Konsole und Logs gibt es auch in
+Portainer): pro Gerät einen eigenen Schlüssel anlegen, statt einen privaten
+Schlüssel herumzukopieren. Auf dem neuen Gerät:
+
+```powershell
+ssh-keygen -t ed25519 -C "<geraetename> vps"
+```
+
+Den Inhalt der erzeugten `.pub`-Datei von einem Gerät mit Zugang aus an
+`/root/.ssh/authorized_keys` auf dem VPS anhängen. Danach auf dem neuen Gerät
+`ssh root@vps` (MagicDNS-Kurzname). Einen Schlüssel sperren = seine Zeile aus
+`authorized_keys` löschen.
 
 ## Alte Deploy-Skripte der Apps
 
