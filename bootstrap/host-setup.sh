@@ -30,6 +30,8 @@ SSH_TAILSCALE_ONLY=0
 TAILSCALE_SSH=0
 SWAP_SIZE="2G"
 APPS_DIR="/srv/apps"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-/opt/platform/bootstrap/x}")/.." && pwd)"
+LOG_FILE="/var/log/host-setup.log"
 
 # ---------------------------------------------------------------------------
 # Ausgabe
@@ -47,6 +49,16 @@ skip() { printf '%s  --%s %s\n' "$C_DIM" "$C_RESET" "$*"; }
 warn() { printf '%s  !!%s %s\n' "$C_WARN" "$C_RESET" "$*" >&2; WARNINGS+=("$*"); }
 die()  { printf '%sFEHLER:%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2; exit 1; }
 trap 'printf "%sAbbruch in Zeile %s.%s Nach dem Beheben einfach erneut ausfuehren.\n" "$C_ERR" "$LINENO" "$C_RESET" >&2' ERR
+
+# Fuehrt ein gespraechiges Kommando (apt, Installer) aus. Die Ausgabe landet
+# in $LOG_FILE; nur bei einem Fehler werden die letzten Zeilen angezeigt.
+quiet() {
+    if ! "$@" >>"$LOG_FILE" 2>&1; then
+        printf '%s--- letzte Zeilen aus %s ---%s\n' "$C_ERR" "$LOG_FILE" "$C_RESET" >&2
+        tail -n 25 "$LOG_FILE" >&2
+        die "fehlgeschlagen: $*"
+    fi
+}
 
 usage() {
     awk 'NR<3 {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' "$0"
@@ -98,10 +110,10 @@ TS_FQDN=""
 # 1. Pakete und automatische Sicherheitsupdates
 # ---------------------------------------------------------------------------
 setup_packages() {
-    log "Systemupdate und Basispakete"
-    apt-get update -qq
-    apt-get -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade
-    apt-get install -y -qq --no-install-recommends \
+    log "Systemupdate und Basispakete (Details: $LOG_FILE)"
+    quiet apt-get update
+    quiet apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade
+    quiet apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg git jq sudo ufw unattended-upgrades
     cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
@@ -160,8 +172,8 @@ setup_docker() {
         local codename="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${ID} ${codename} stable" \
             > /etc/apt/sources.list.d/docker.list
-        apt-get update -qq
-        apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
+        quiet apt-get update
+        quiet apt-get install -y docker-ce docker-ce-cli containerd.io \
             docker-buildx-plugin docker-compose-plugin
         ok "installiert ($(docker --version))"
     fi
@@ -198,7 +210,7 @@ EOF
 setup_tailscale() {
     log "Tailscale"
     if ! command -v tailscale >/dev/null 2>&1; then
-        curl -fsSL https://tailscale.com/install.sh | sh
+        quiet sh -c 'curl -fsSL https://tailscale.com/install.sh | sh'
     fi
     systemctl enable --now tailscaled >/dev/null 2>&1
 
@@ -332,7 +344,7 @@ summary() {
 
   Naechste Schritte:
     1. Tailscale-Adminkonsole -> DNS: MagicDNS und "HTTPS Certificates" aktivieren
-    2. Plattform starten:   bash scripts/platform.sh up
+    2. Plattform starten:   bash $REPO_DIR/scripts/platform.sh up
     3. Im Browser (Geraet im Tailnet):
          $base          Startseite
          $base:9443     Portainer - Admin-Konto innerhalb von 5 Minuten anlegen!
