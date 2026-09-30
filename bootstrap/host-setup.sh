@@ -11,6 +11,7 @@
 #   5. Firewall (UFW): eingehend nur SSH und Tailscale
 #   6. SSH: nur Schluessel, keine Passwoerter
 #   7. Verzeichnis /srv/apps fuer App-Daten
+#   8. Wartung: Log-Rotation (App-Logs, Systemjournal), naechtliche Sicherung
 #
 # Idempotent - erneutes Ausfuehren ist unschaedlich.
 #
@@ -327,6 +328,60 @@ setup_dirs() {
     log "Verzeichnisse"
     install -d -m 755 "$APPS_DIR"
     ok "$APPS_DIR (Daten der App-Stacks)"
+
+    # Die App-Images laufen als UID 10001. Ein gleichnamiger Systembenutzer auf
+    # dem Host macht Besitzer lesbar (ls zeigt "app") und wird fuer logrotate
+    # gebraucht, das bei "su" einen Namen statt einer Nummer verlangt.
+    if ! getent passwd 10001 >/dev/null; then
+        getent group 10001 >/dev/null || groupadd --system --gid 10001 app
+        useradd --system --uid 10001 --gid 10001 --no-create-home \
+            --home-dir /nonexistent --shell /usr/sbin/nologin app
+    fi
+    ok "Benutzer $(getent passwd 10001 | cut -d: -f1) (UID 10001) = Benutzer in den App-Containern"
+}
+
+# ---------------------------------------------------------------------------
+# 8. Wartung: Log-Rotation, Journal-Groesse, naechtliche Sicherung
+# ---------------------------------------------------------------------------
+BACKUP_TIME="${BACKUP_TIME:-30 3 * * *}"   # Cron-Zeit (Serverzeit), Standard 03:30
+
+setup_maintenance() {
+    log "Wartung (Logs, Sicherung)"
+
+    # Datei-Logs, die weder Docker noch die App selbst rotiert.
+    local rot_src="$REPO_DIR/platform/logrotate.conf"
+    if [[ -f "$rot_src" ]]; then
+        install -m 644 "$rot_src" /etc/logrotate.d/platform
+        # -d = Trockenlauf: prueft die Syntax, veraendert nichts
+        if logrotate -d /etc/logrotate.d/platform 2>&1 | grep -q '^error:'; then
+            warn "logrotate meldet Fehler in /etc/logrotate.d/platform - 'logrotate -d /etc/logrotate.d/platform' pruefen."
+        else
+            ok "Log-Rotation der App-Logs (/etc/logrotate.d/platform)"
+        fi
+    else
+        warn "$rot_src fehlt - Log-Rotation der App-Logs nicht eingerichtet."
+    fi
+
+    # Systemjournal begrenzen - der Standard erlaubt 10 % der Platte (bis 4 GB).
+    local jconf=/etc/systemd/journald.conf.d/10-platform.conf
+    local jdesired=$'[Journal]\nSystemMaxUse=500M'
+    if [[ "$(cat "$jconf" 2>/dev/null)" != "$jdesired" ]]; then
+        install -d -m 755 /etc/systemd/journald.conf.d
+        printf '%s\n' "$jdesired" > "$jconf"
+        systemctl restart systemd-journald
+    fi
+    ok "Systemjournal auf 500 MB begrenzt"
+
+    # Naechtliche Sicherung: Portainer (inkl. Stack-Secrets), Beszel, /srv/apps.
+    cat > /etc/cron.d/platform-backup <<EOF
+# von bootstrap/host-setup.sh - naechtliche Sicherung, siehe scripts/backup.sh
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+$BACKUP_TIME root /bin/bash $REPO_DIR/scripts/backup.sh >> /var/log/platform-backup.log 2>&1
+EOF
+    chmod 644 /etc/cron.d/platform-backup
+    ok "Sicherung per Cron ($BACKUP_TIME) nach /var/backups/platform, Log: /var/log/platform-backup.log"
 }
 
 summary() {
@@ -359,6 +414,7 @@ main() {
     setup_firewall
     setup_ssh
     setup_dirs
+    setup_maintenance
     summary
 }
 

@@ -72,6 +72,7 @@ Repo (auf dem VPS unter /opt/platform)
 │   ├── compose.yaml             Portainer, Homepage, Beszel, Dozzle, Ofelia
 │   ├── .env.example             Plattform-Einstellungen (→ platform/.env)
 │   ├── serve.conf               welche Oberfläche unter welchem Tailnet-Port
+│   ├── logrotate.conf           Rotation der App-Logdateien (→ /etc/logrotate.d)
 │   └── homepage/                Startseiten-Konfiguration
 ├── stacks/
 │   ├── arbitrage-scout/         compose.yaml + .env.example (Variablennamen)

@@ -89,6 +89,18 @@ Dateien in `/srv/apps` gehören danach nicht mehr der App.
 - **Dateien** – `/srv/apps/<app>/...`. Beachten: Scans, die der Scout-Listener
   per `/scan` startet, schreiben nur in `logs/scout.log`, nicht nach stdout.
 
+Aufräumen passiert automatisch (von `bootstrap/host-setup.sh` eingerichtet):
+
+| Was | Wer rotiert | Grenze |
+|---|---|---|
+| Container-Logs (stdout/stderr) | Docker (`/etc/docker/daemon.json`) | 3 × 10 MB je Container |
+| `scout.log` | der Scout selbst | 5 × 5 MB |
+| `screener.log`, Backup-Log | logrotate (`platform/logrotate.conf`) | wöchentlich bzw. ab 20 MB, 8 Stände |
+| Systemjournal | journald | 500 MB |
+
+Neue App mit eigener Logdatei ohne Rotation: Block in `platform/logrotate.conf`
+ergänzen, auf dem Server `git pull` und `bash bootstrap/host-setup.sh`.
+
 ## Monitoring mit Beszel
 
 Einmalig einrichten:
@@ -138,14 +150,18 @@ Zwei Ebenen:
    (14 Tage). Gut vor Updates und für das gezielte Zurückholen einzelner
    Dateien.
 
-Täglich automatisch, z. B. 03:30:
+Die Sicherung läuft **täglich um 03:30** (Cron-Datei `/etc/cron.d/platform-backup`,
+von `host-setup.sh` angelegt; andere Uhrzeit: `BACKUP_TIME="15 2 * * *" bash
+bootstrap/host-setup.sh`). Protokoll: `/var/log/platform-backup.log`.
+Von Hand, z. B. vor einem Update:
 
 ```bash
-echo '30 3 * * * root bash /opt/platform/scripts/backup.sh >> /var/log/platform-backup.log 2>&1' > /etc/cron.d/platform-backup
+bash /opt/platform/scripts/backup.sh
 ```
 
 Portainer und Beszel sind während der Sicherung wenige Sekunden aus; die Apps
-laufen weiter.
+laufen weiter. Die Archive liegen auf derselben Platte wie der Server – gegen
+einen Totalverlust schützt nur Ebene 1 (Hetzner-Backups).
 
 Wiederherstellen eines Volumes (Beispiel Portainer):
 
