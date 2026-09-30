@@ -161,6 +161,8 @@ docker start portainer
 | Symptom | Ursache / Lösung |
 |---|---|
 | Portainer: „timed out for security purposes" | Admin-Konto nicht innerhalb von 5 Min. angelegt → `docker restart portainer`, dann sofort anlegen |
+| Portainer fragt nach „Setup token" | `docker logs portainer 2>&1 \| grep setup_token \| tail -1` – nach jedem Neustart ein neues |
+| „Client sent an HTTP request to an HTTPS server" | Adresse mit `https://` eingeben (Chrome nimmt bei Adressen mit Port sonst `http://`) |
 | Portainer: „Forbidden – origin invalid" | In `platform/compose.yaml` bei Portainer `TRUSTED_ORIGINS` einkommentieren (Format je nach Version, steht dort), `scripts/platform.sh up` |
 | Oberflächen nicht erreichbar | `tailscale status` (Gerät online?), `bash scripts/tailscale-serve.sh status`, in der Adminkonsole MagicDNS + HTTPS Certificates aktiv? |
 | `tailscale serve` wartet mit Link | HTTPS im Tailnet noch nicht freigeschaltet – Link öffnen |

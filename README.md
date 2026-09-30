@@ -171,7 +171,18 @@ Ausgabe, z. B. `https://vps.tail1234.ts.net`.
 
 **Sofort Portainer öffnen** (`https://vps.<tailnet>.ts.net:9443`) und das
 Admin-Konto anlegen – nach 5 Minuten sperrt Portainer die Ersteinrichtung
-(dann `docker restart portainer`). Als Umgebung „Get Started" → *local*.
+(dann `docker restart portainer`). Portainer fragt dabei nach einem
+**Setup-Token**; es steht im Log (nach jedem Neustart ein neues):
+
+```bash
+docker logs portainer 2>&1 | grep setup_token | tail -1
+```
+
+Als Umgebung „Get Started" → *local*.
+
+Adressen im Browser immer **mit `https://`** eingeben – ohne Schema nimmt
+Chrome bei Adressen mit Port `http://`, und Tailscale antwortet dann mit
+„Client sent an HTTP request to an HTTPS server".
 
 Danach Beszel einrichten (Admin-Konto, Agent verbinden):
 [docs/betrieb.md → Monitoring](docs/betrieb.md#monitoring-mit-beszel).
