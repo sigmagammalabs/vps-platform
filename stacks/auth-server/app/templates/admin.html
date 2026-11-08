@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VPS Auth Server - Sigma Gamma Labs</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --card-bg: #141a24;
+      --card-border: #222b3a;
+      --text: #c5cbd5;
+      --text-bright: #ffffff;
+      --muted: #748094;
+      --accent: #2962ff;
+      --accent-hover: #1e53e5;
+      --success: #26a69a;
+      --success-bg: rgba(38, 166, 154, 0.12);
+      --danger: #ef5350;
+      --danger-bg: rgba(239, 83, 80, 0.12);
+      --warning: #ffb74d;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--card-border);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo-badge {
+      background: rgba(41, 98, 255, 0.15);
+      border: 1px solid rgba(41, 98, 255, 0.4);
+      color: #64b5f6;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--text-bright);
+      font-weight: 700;
+    }
+    .subtitle {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .host-pill {
+      background: #1d2533;
+      border: 1px solid var(--card-border);
+      color: #90caf9;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    main {
+      max-width: 1300px;
+      margin: 24px auto;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .metric-lbl {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .metric-val {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-bright);
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .card-title {
+      margin: 0 0 16px 0;
+      font-size: 16px;
+      color: var(--text-bright);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #9ab;
+    }
+    input, select {
+      background: #0d121a;
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font: inherit;
+      font-size: 13px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 8px rgba(41, 98, 255, 0.3);
+    }
+    .btn-submit {
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 18px;
+      transition: background 0.15s ease;
+    }
+    .btn-submit:hover {
+      background: var(--accent-hover);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid #1a2230;
+    }
+    th {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+      background: rgba(0, 0, 0, 0.15);
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge.active { background: var(--success-bg); color: #80cbc4; border: 1px solid rgba(38, 166, 154, 0.4); }
+    .badge.suspended { background: var(--danger-bg); color: #ff8a80; border: 1px solid rgba(239, 83, 80, 0.4); }
+    .badge.expired { background: rgba(255, 183, 77, 0.15); color: #ffb74d; border: 1px solid rgba(255, 183, 77, 0.4); }
+    .key-code {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: #64b5f6;
+      background: rgba(41, 98, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .hwid-pill {
+      font-family: monospace;
+      font-size: 11px;
+      background: #1a2230;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #b0bec5;
+      display: block;
+      margin-bottom: 3px;
+    }
+    .btn-action {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      margin-right: 4px;
+      transition: all 0.12s ease;
+    }
+    .btn-action:hover {
+      background: #1f2736;
+      color: #fff;
+    }
+    .btn-action.btn-danger:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+    .btn-action.btn-reset:hover {
+      background: #ff9800;
+      border-color: #ff9800;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo-badge">🛡️</div>
+    <div>
+      <h1>VPS Auth & Licensing Server</h1>
+      <p class="subtitle">Zentrale Hardware-Aktivierung & Weitergabe-Schutz</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="host-pill">{{ host }}</span>
+  </div>
+</header>
+
+<main>
+  <!-- Kennzahlen -->
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <span class="metric-lbl">Gesamt-Lizenzen</span>
+      <span class="metric-val">{{ total_licenses }}</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-lbl">Aktive Lizenzen</span>
+      <span class="metric-val" style="color: #4db6ac;">{{ active_licenses }}</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-lbl">Gebundene Hardware-Geräte</span>
+      <span class="metric-val" style="color: #64b5f6;">{{ total_devices }}</span>
+    </div>
+  </div>
+
+  <!-- Neue Lizenz generieren -->
+  <div class="card">
+    <h2 class="card-title">➕ Neue Lizenz anlegen</h2>
+    <form method="POST" action="/admin/create">
+      <input type="hidden" name="token" value="{{ token }}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Kunde / Tester-Name:</label>
+          <input type="text" name="client_name" placeholder="z. B. Max Mustermann" required>
+        </div>
+        <div class="form-group">
+          <label>Ziel-Tool:</label>
+          <select name="tool_id">
+            <option value="all">Alle Tools (Universal)</option>
+            <option value="tradingview_ai" selected>TradingView AI</option>
+            <option value="premarket-screener">Pre-Market Screener</option>
+            <option value="arbitrage-scout">Arbitrage Scout</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Gültigkeit (Tage):</label>
+          <select name="days_valid">
+            <option value="14">14 Tage (Testlizenz)</option>
+            <option value="30" selected>30 Tage (Standard-Monat)</option>
+            <option value="90">90 Tage (Quartal)</option>
+            <option value="365">365 Tage (1 Jahr)</option>
+            <option value="0">Unbegrenzt (Dauerlizenz)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Erlaubte PCs (Geräte-Limit):</label>
+          <input type="number" name="max_devices" value="1" min="1" max="10" required>
+        </div>
+        <div class="form-group">
+          <label>Notizen / Referenz:</label>
+          <input type="text" name="notes" placeholder="z. B. Beta-Tester WhatsApp">
+        </div>
+      </div>
+      <button type="submit" class="btn-submit">🚀 Lizenzschlüssel erzeugen</button>
+    </form>
+  </div>
+
+  <!-- Tabelle aller Lizenzen -->
+  <div class="card">
+    <h2 class="card-title">🔑 Registrierte Lizenzen & Hardware-Bindungen</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Lizenzschlüssel</th>
+          <th>Kunde & Notiz</th>
+          <th>Tool</th>
+          <th>Status</th>
+          <th>Gültig bis</th>
+          <th>Gebundene Geräte (HWIDs)</th>
+          <th>Aktionen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lic in licenses %}
+        <tr>
+          <td>
+            <span class="key-code" onclick="navigator.clipboard.writeText('{{ lic.license_key }}'); alert('Kopiert: {{ lic.license_key }}');" title="Klicken zum Kopieren">
+              {{ lic.license_key }} 📋
+            </span>
+          </td>
+          <td>
+            <strong>{{ lic.client_name }}</strong>
+            {% if lic.notes %}<br><small style="color: var(--muted);">{{ lic.notes }}</small>{% endif %}
+          </td>
+          <td><code>{{ lic.tool_id }}</code></td>
+          <td>
+            {% if lic.status == 'active' %}
+              <span class="badge active">🟢 Aktiv</span>
+            {% else %}
+              <span class="badge suspended">🔴 Gesperrt</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if lic.expires_at %}
+              {{ lic.expires_at[:10] }}<br>
+              <small style="color: var(--muted);">noch {{ lic.days_left }} Tage</small>
+            {% else %}
+              <span style="color: #81c784;">♾️ Unbegrenzt</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if lic.devices %}
+              {% for d in lic.devices %}
+                <span class="hwid-pill" title="Zuletzt aktiv: {{ d.last_seen_at[:19] }} (IP: {{ d.ip_address }})">
+                  💻 {{ d.hwid }}
+                </span>
+              {% endfor %}
+            {% else %}
+              <span style="color: var(--muted); font-style: italic;">Noch kein PC gebunden (0/{{ lic.max_devices }})</span>
+            {% endif %}
+          </td>
+          <td>
+            <!-- HWID Reset Button -->
+            <form method="POST" action="/admin/reset-devices" style="display:inline;">
+              <input type="hidden" name="token" value="{{ token }}">
+              <input type="hidden" name="license_key" value="{{ lic.license_key }}">
+              <button type="submit" class="btn-action btn-reset" title="Entfernt alle gebundenen PCs, damit der Kunde das Tool auf einem neuen PC aktivieren kann" onclick="return confirm('Hardware-Bindung für diese Lizenz wirklich zurücksetzen?');">
+                🔄 HW-Reset
+              </button>
+            </form>
+
+            <!-- Toggle Sperre Button -->
+            <form method="POST" action="/admin/toggle-status" style="display:inline;">
+              <input type="hidden" name="token" value="{{ token }}">
+              <input type="hidden" name="license_key" value="{{ lic.license_key }}">
+              <input type="hidden" name="new_status" value="{{ 'suspended' if lic.status == 'active' else 'active' }}">
+              <button type="submit" class="btn-action">
+                {{ '🔒 Sperren' if lic.status == 'active' else '🔓 Entsperren' }}
+              </button>
+            </form>
+
+            <!-- Delete Button -->
+            <form method="POST" action="/admin/delete" style="display:inline;">
+              <input type="hidden" name="token" value="{{ token }}">
+              <input type="hidden" name="license_key" value="{{ lic.license_key }}">
+              <button type="submit" class="btn-action btn-danger" onclick="return confirm('Diese Lizenz endgültig löschen?');">
+                🗑️
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not licenses %}
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--muted); padding: 24px;">
+            Noch keine Lizenzen angelegt. Nutzen Sie das obige Formular, um die erste Lizenz zu erstellen.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Audit Log -->
+  <div class="card">
+    <h2 class="card-title">📜 Audit-Log (Letzte Aktivitäten)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Zeitpunkt</th>
+          <th>Aktion</th>
+          <th>Lizenzschlüssel</th>
+          <th>Hardware-ID</th>
+          <th>IP-Adresse</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in audit_logs %}
+        <tr>
+          <td><small style="color: var(--muted);">{{ a.timestamp[:19] }}</small></td>
+          <td><code>{{ a.action }}</code></td>
+          <td><code>{{ a.license_key or '-' }}</code></td>
+          <td><small>{{ a.hwid or '-' }}</small></td>
+          <td><small>{{ a.ip_address or '-' }}</small></td>
+          <td><small>{{ a.details or '-' }}</small></td>
+        </tr>
+        {% endfor %}
+        {% if not audit_logs %}
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--muted); padding: 16px;">Keine Einträge vorhanden.</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</main>
+
+</body>
+</html>

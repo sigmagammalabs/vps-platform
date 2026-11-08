@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# VPS Auth- & Licensing-Server (Zentrale Hardware-Aktivierung)
+# Port: 8100 (Tailscale Serve: https://vps.tail5c3478.ts.net:8100)
+#
+# Bindet Lizenzen an die Hardware-ID (Node-Locking) und verhindert die
+# Weitergabe von Trading-Tools und Desktop-Applikationen.
+# ---------------------------------------------------------------------------
+
+name: auth-server
+
+services:
+  # Legt das Datenverzeichnis auf dem Host an und übergibt es UID 10001
+  init-dirs:
+    image: busybox:stable
+    restart: "no"
+    network_mode: none
+    command:
+      - sh
+      - -c
+      - mkdir -p /target/data && chown -R 10001:10001 /target/data
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/auth-server}:/target
+
+  auth-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-server
+    restart: unless-stopped
+    init: true
+    depends_on:
+      init-dirs:
+        condition: service_completed_successfully
+    environment:
+      TZ: Europe/Berlin
+      AUTH_ADMIN_TOKEN: ${AUTH_ADMIN_TOKEN:-}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-vps.tail5c3478.ts.net,127.0.0.1,localhost}
+    volumes:
+      - ${DATA_ROOT:-/srv/apps/auth-server}/data:/app/data
+    ports:
+      # Nur lokal binden - Tailscale Serve übernimmt SSL und Weiterleitung
+      - "127.0.0.1:8100:8100"
+    mem_limit: ${MEM_LIMIT:-512m}
+    cpus: ${CPUS:-1.0}
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      homepage.group: Apps
+      homepage.name: Auth-Server
+      homepage.icon: shield.png
+      homepage.href: https://vps.tail5c3478.ts.net:8100/admin
+      homepage.description: Hardware-Aktivierung & Lizenz-Dashboard
