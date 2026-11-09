@@ -2,8 +2,8 @@
 # VPS Auth- & Licensing-Server (Zentrale Hardware-Aktivierung)
 # Port: 8100 (Tailscale Serve: https://vps.tail5c3478.ts.net:8100)
 #
-# Bindet Lizenzen an die Hardware-ID (Node-Locking) und verhindert die
-# Weitergabe von Trading-Tools und Desktop-Applikationen.
+# Bindet Lizenzen an die Hardware-ID (Node-Locking). Antworten sind mit
+# Ed25519 signiert (Server-Vertrag v2, siehe README).
 # ---------------------------------------------------------------------------
 
 name: auth-server
@@ -33,14 +33,23 @@ services:
         condition: service_completed_successfully
     environment:
       TZ: Europe/Berlin
-      AUTH_ADMIN_TOKEN: ${AUTH_ADMIN_TOKEN:-}
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      # Pflicht: ohne Wert bricht schon "docker compose up" ab (und der Server startet nicht)
+      AUTH_ADMIN_TOKEN: ${AUTH_ADMIN_TOKEN:?AUTH_ADMIN_TOKEN fehlt - stacks/auth-server/.env oder Portainer-Variablen}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-vps.tail5c3478.ts.net,127.0.0.1,localhost}
     volumes:
       - ${DATA_ROOT:-/srv/apps/auth-server}/data:/app/data
     ports:
       # Nur lokal binden - Tailscale Serve übernimmt SSL und Weiterleitung
       - "127.0.0.1:8100:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/api/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    read_only: true   # geschrieben wird nur unter /app/data (Volume)
+    tmpfs:
+      - /tmp
     mem_limit: ${MEM_LIMIT:-512m}
     cpus: ${CPUS:-1.0}
     pids_limit: 256

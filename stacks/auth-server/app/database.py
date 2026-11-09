@@ -6,13 +6,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-DATA_DIR = Path(os.getenv("AUTH_DATA_DIR", "/app/data"))
-DB_PATH = DATA_DIR / "licenses.db"
+AUDIT_LOG_KEEP = 50_000  # aelteste Eintraege darueber hinaus werden verworfen
+
+
+def _data_dir() -> Path:
+    # Erst beim Aufruf lesen (nicht beim Import), damit Tests den Pfad umlenken koennen.
+    return Path(os.getenv("AUTH_DATA_DIR", "/app/data"))
 
 
 def get_db_connection() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    data_dir = _data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(data_dir / "licenses.db", timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
@@ -57,6 +62,11 @@ def init_db() -> None:
                 details TEXT
             );
         """)
+        # Das Audit-Log waechst bei jeder Anfrage (auch fremden) - Obergrenze halten.
+        conn.execute(
+            "DELETE FROM audit_logs WHERE id <= (SELECT COALESCE(MAX(id), 0) FROM audit_logs) - ?",
+            (AUDIT_LOG_KEEP,),
+        )
         conn.commit()
 
 

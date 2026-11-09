@@ -265,6 +265,10 @@
   </div>
   <div class="header-right">
     <span class="host-pill">{{ host }}</span>
+    <form method="POST" action="/admin/logout" style="display:inline; margin-left:10px;">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn-action">Abmelden</button>
+    </form>
   </div>
 </header>
 
@@ -289,7 +293,7 @@
   <div class="card">
     <h2 class="card-title">➕ Neue Lizenz anlegen</h2>
     <form method="POST" action="/admin/create">
-      <input type="hidden" name="token" value="{{ token }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="form-grid">
         <div class="form-group">
           <label>Kunde / Tester-Name:</label>
@@ -384,7 +388,7 @@
           <td>
             <!-- HWID Reset Button -->
             <form method="POST" action="/admin/reset-devices" style="display:inline;">
-              <input type="hidden" name="token" value="{{ token }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
               <input type="hidden" name="license_key" value="{{ lic.license_key }}">
               <button type="submit" class="btn-action btn-reset" title="Entfernt alle gebundenen PCs, damit der Kunde das Tool auf einem neuen PC aktivieren kann" onclick="return confirm('Hardware-Bindung für diese Lizenz wirklich zurücksetzen?');">
                 🔄 HW-Reset
@@ -393,7 +397,7 @@
 
             <!-- Toggle Sperre Button -->
             <form method="POST" action="/admin/toggle-status" style="display:inline;">
-              <input type="hidden" name="token" value="{{ token }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
               <input type="hidden" name="license_key" value="{{ lic.license_key }}">
               <input type="hidden" name="new_status" value="{{ 'suspended' if lic.status == 'active' else 'active' }}">
               <button type="submit" class="btn-action">
@@ -403,7 +407,7 @@
 
             <!-- Delete Button -->
             <form method="POST" action="/admin/delete" style="display:inline;">
-              <input type="hidden" name="token" value="{{ token }}">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
               <input type="hidden" name="license_key" value="{{ lic.license_key }}">
               <button type="submit" class="btn-action btn-danger" onclick="return confirm('Diese Lizenz endgültig löschen?');">
                 🗑️

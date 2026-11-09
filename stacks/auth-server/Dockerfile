@@ -39,4 +39,7 @@ EXPOSE 8100
 # Früher Integritäts-Check beim Image-Bau
 RUN python -c "import app.main"
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# --no-proxy-headers: Die Aufrufer-Adresse liest app/security.py selbst aus X-Forwarded-For
+# (Tailscale setzt es und ueberschreibt Fremdwerte). Uvicorns "*"-Vertrauen wuerde den
+# ERSTEN Eintrag nehmen und waere faelschbar.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100", "--no-proxy-headers", "--no-server-header"]
