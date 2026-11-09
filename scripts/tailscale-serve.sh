@@ -27,13 +27,21 @@ apply() {
     # Erst alles entfernen, dann neu setzen: so verschwinden auch Eintraege,
     # die aus serve.conf geloescht wurden.
     "${SUDO[@]}" tailscale serve reset
-    local port target name
-    while read -r port target name <&3; do
-        [[ -z "$port" || "$port" == \#* ]] && continue
-        printf '  %-10s :%-5s -> %s\n' "${name:-?}" "$port" "$target"
+    local a b c d e
+    while read -r a b c d e <&3; do
+        [[ -z "$a" || "$a" == \#* ]] && continue
+        if [[ "$a" == "funnel" ]]; then
+            # funnel <https-port> <pfad> <ziel> [name] - OEFFENTLICH im Internet, nur dieser Pfad.
+            # Das gehoert in serve.conf, weil der Reset oben sonst jeden von Hand gesetzten
+            # Funnel beim naechsten "platform.sh up" stillschweigend entfernen wuerde.
+            printf '  %-10s :%-5s -> %s   !! OEFFENTLICH (Funnel), nur Pfad %s\n' "${e:-?}" "$b" "$d" "$c"
+            "${SUDO[@]}" tailscale funnel --bg --https="$b" --set-path="$c" "$d"
+            continue
+        fi
+        printf '  %-10s :%-5s -> %s\n' "${c:-?}" "$a" "$b"
         # Ist HTTPS im Tailnet noch nicht aktiviert, gibt tailscale hier einen
         # Link zum Freischalten aus und wartet - Ausgabe daher nicht unterdruecken.
-        "${SUDO[@]}" tailscale serve --bg --https="$port" "$target"
+        "${SUDO[@]}" tailscale serve --bg --https="$a" "$b"
     done 3< "$CONF"
     printf '\n'
     "${SUDO[@]}" tailscale serve status

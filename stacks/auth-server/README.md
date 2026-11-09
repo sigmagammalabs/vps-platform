@@ -1,92 +1,100 @@
 # VPS Auth- & Licensing-Server (Sigma Gamma Labs)
 
-Zentraler Authentifizierungs- und Hardware-Aktivierungsserver für Desktop-Tools (z. B. **TradingView AI**, **Pre-Market Screener**, **Arbitrage Scout**).
+Zentraler Lizenzserver für Desktop-Tools (z. B. **TradingView AI**). Eine Lizenz wird beim
+ersten Start an die Hardware-ID des PCs gebunden (Node-Locking). Der Server beantwortet jede
+Prüfung mit einem **Ed25519-signierten Token**; der Client kennt nur den öffentlichen Schlüssel,
+in der Exe steckt kein Geheimnis.
 
-Bindet Lizenzen an die Hardware-ID (Node-Locking) des Ziel-PCs. Wird die Software auf einen anderen Computer kopiert, wird der Start sofort serverseitig mit `HTTP 403 (DEVICE_LIMIT_REACHED)` blockiert.
+## 1. Überblick
 
----
+| | |
+|---|---|
+| Container | `auth-server` (Python 3.12, UID 10001, read-only Dateisystem, Healthcheck) |
+| Port | `127.0.0.1:8100`, von außen nur über Tailscale |
+| Tailnet | `https://vps.tail5c3478.ts.net:8100` (alles inkl. `/admin`) |
+| Öffentlich | nur `/api` über Tailscale Funnel auf Port 10000, **erst nach Freigabe** (Abschnitt 4) |
+| Daten | `/srv/apps/auth-server/data`: `licenses.db` und **`signing_key.pem`** |
 
-## 1. Übersicht & Architektur
+## 2. Server-Vertrag v2 (verbindlich für Server und Clients)
 
-* **Port:** `8100` (im Container und lokal gebunden auf `127.0.0.1:8100`)
-* **Tailscale Serve URL:** `https://vps.tail5c3478.ts.net:8100`
-* **Admin-Dashboard:** `https://vps.tail5c3478.ts.net:8100/admin`
-* **Datenpfad:** `/srv/apps/auth-server/data` (SQLite-Datenbank mit WAL-Modus)
-* **UID:** `10001` (Standard-App-Nutzer auf der VPS-Plattform)
+`POST /api/v1/verify`, JSON:
 
----
-
-## 2. Schnelle Inbetriebnahme auf dem VPS
-
-### Schritt 1: In `platform/serve.conf` eintragen
-Ergänzen Sie in `platform/serve.conf` (Repo `vps-platform`) die Zeile:
-```conf
-8100  http://127.0.0.1:8100  AuthServer
-```
-Danach auf dem VPS ausführen:
-```bash
-bash /opt/platform/scripts/tailscale-serve.sh apply
+```json
+{ "license_key": "ACT-XXXX-XXXX-XXXX-XXXX", "hwid": "TVKI-XXXX-XXXX-XXXX-XXXX",
+  "tool_id": "tradingview_ai", "device_name": "PC-NAME", "nonce": "<16 Zufallsbytes, base64url>" }
 ```
 
-### Schritt 2: Stack in Portainer anlegen (oder CLI)
-1. In Portainer unter **Stacks -> Add stack**.
-2. Name: `auth-server`
-3. Inhalt der `compose.yaml` einfügen (oder Repo verbinden).
-4. Umgebungsvariablen (`.env`) setzen:
-   - `AUTH_ADMIN_TOKEN`: Ihr persönliches, geheimes Admin-Passwort.
-   - `AUTH_JWT_SECRET`: Zufälliger Salt-String für Signierung.
-   - `DATA_ROOT`: `/srv/apps/auth-server`
-   - `ALLOWED_HOSTS`: `vps.tail5c3478.ts.net,127.0.0.1,localhost`
-5. Auf **Deploy the stack** klicken.
+**200**: `valid`, `client_name`, `tool_id`, `expires_at`, `days_left`, `message` und `token`.
 
-*(Alternativ per Terminal auf dem VPS:)*
+`token = <payload_b64url>.<signature_b64url>`, Signatur Ed25519 über die ASCII-Bytes von
+`payload_b64url`. Payload: `v=1`, `hwid`, `tool`, `nonce` (Echo), `iat`, `exp`, `lic_exp`
+(Unix-Sekunden, `lic_exp=0` = unbegrenzt), `exp = min(iat + 48 h, lic_exp)`.
+
+**Fehler**: JSON `{"error": CODE, "detail": Text}`
+
+| Status | `error` |
+|---|---|
+| 404 | `INVALID_KEY` |
+| 403 | `LICENSE_SUSPENDED`, `LICENSE_EXPIRED`, `WRONG_TOOL`, `DEVICE_LIMIT_REACHED` |
+| 422 | `BAD_REQUEST` (`detail` ist eine Liste aus `loc`/`msg`/`type`, ohne Echo der Eingabe) |
+| 429 | `RATE_LIMITED` mit Header `Retry-After` (Sekunden) |
+
+Definitiv abgelehnt wird nur mit **404/403 und einem dieser Codes**. 429, 5xx und Netzwerkfehler
+sind keine Ablehnung (Client behält sein Token bis `exp`).
+
+Weitere Endpunkte: `GET /api/health`, `GET /api/v1/public-key` (öffentlicher Schlüssel, Base64
+der 32 Rohbytes, zum Eintragen in den Client).
+
+**Anfragebremse** je Aufrufer-Adresse: 30 Anfragen/min, 10 unbekannte Schlüssel je 10 min,
+5 falsche Admin-Anmeldungen je 5 min. Die Adresse ist der letzte `X-Forwarded-For`-Eintrag;
+Tailscale Serve überschreibt dort Werte des Aufrufers (getestet).
+
+## 3. Installation (auf dem VPS)
+
 ```bash
 cd /opt/platform/stacks/auth-server
-cp .env.example .env
-nano .env
+cp .env.example .env && chmod 600 .env
+# AUTH_ADMIN_TOKEN eintragen (mind. 24 Zeichen, zufällig):
+#   openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | cut -c1-40
 docker compose up -d --build
+tailscale serve --bg --https=8100 http://127.0.0.1:8100   # oder: scripts/tailscale-serve.sh apply
 ```
 
----
+Ohne `AUTH_ADMIN_TOKEN` (oder mit einem bekannten Standardwert) startet der Server nicht. Beim
+allerersten Start erzeugt er `data/signing_key.pem`; der öffentliche Schlüssel steht im Log
+(`docker logs auth-server`) und unter `/api/v1/public-key`.
 
-## 3. Web-Dashboard bedienen
+## 4. Öffentlicher Zugang für Tester ohne Tailscale (Funnel, nur `/api`)
 
-Rufen Sie im Browser auf (sofern Ihr Gerät im Tailnet ist):
-👉 **`https://vps.tail5c3478.ts.net:8100/admin`**
+Funnel gibt einen Pfad ins Internet frei, ohne dass der Tester Tailscale braucht. **Nur `/api`**
+wird durchgereicht; `/admin`, `/docs` und alles andere beantwortet Tailscale selbst mit 404.
 
-* **Admin-Token eingeben**: Entspricht `AUTH_ADMIN_TOKEN`.
-* **Lizenz erstellen:** Name eingeben, Tool wählen (`tradingview_ai` oder `all`), Gültigkeit wählen (z. B. 30 Tage oder Unbegrenzt) -> **Lizenz erzeugen**.
-* **HW-Reset:** Falls ein Kunde einen neuen PC kauft, klicken Sie auf `🔄 HW-Reset`, damit das neue Gerät gebunden werden kann.
-* **Kill-Switch:** Klick auf `🔒 Sperren` entzieht dem Kunden sofort den Zugriff in Echtzeit.
+1. Einmalig in der Tailscale-Adminkonsole Funnel für das Tailnet erlauben (der Befehl unten
+   zeigt dazu beim ersten Aufruf einen Link).
+2. In `platform/serve.conf` die Zeile `funnel 10000 /api ...` einkommentieren und
+   `bash scripts/tailscale-serve.sh apply` ausführen. Die Zeile gehört in die Datei, weil der
+   Reset in diesem Skript sonst jeden von Hand gesetzten Funnel entfernt.
+3. Prüfen, **außerhalb** des Tailnets (Handy im Mobilfunk):
+   `https://vps.tail5c3478.ts.net:10000/api/health` muss antworten, `.../admin` muss 404 liefern.
 
----
+Zurücknehmen: Zeile wieder auskommentieren und `apply`, oder `tailscale funnel --https=10000 off`.
 
-## 4. Wichtiger Hinweis zu Testern außerhalb von Tailscale (Tailscale Funnel)
+## 5. Admin-Dashboard
 
-* **Wenn der Tester in Ihrem Tailnet ist:**  
-  Das Desktop-Tool erreicht `https://vps.tail5c3478.ts.net:8100` direkt über das verschlüsselte Tailnet.
-* **Wenn der Tester ein externer Dritter OHNE Tailscale ist:**  
-  Tailscale bietet die geniale Funktion **Tailscale Funnel**. Damit schalten Sie diesen einen Port öffentlich frei, ohne Ports in der Server-Firewall öffnen zu müssen:
-  ```bash
-  tailscale funnel --bg 8100 on
-  ```
-  Danach ist `https://vps.tail5c3478.ts.net:8100` auch für externe Tester über das weltweite Internet mit gültigem SSL-Zertifikat erreichbar!
+`https://vps.tail5c3478.ts.net:8100/admin`, Anmeldung mit `AUTH_ADMIN_TOKEN`. Danach hängt die
+Sitzung an einem Cookie (8 h, `HttpOnly`, `SameSite=Strict`); das Token steht nie in der URL.
+Formulare tragen ein CSRF-Feld. Für Skripte geht weiterhin `Authorization: Bearer <Token>`.
 
----
+* **Lizenz anlegen:** Name, Tool, Gültigkeit, Geräte-Limit.
+* **HW-Reset:** gibt die gebundenen PCs frei (neuer Rechner des Kunden).
+* **Sperren:** wirkt beim nächsten Abgleich des Clients (spätestens nach 24 h online).
 
-## 5. API-Schnittstelle für Desktop-Clients
+## 6. Sicherung und Betrieb
 
-### `POST /api/v1/verify`
-```json
-{
-  "license_key": "ACT-XXXX-XXXX-XXXX-XXXX",
-  "hwid": "TVKI-16D5-A8DD-6D04-E3DE",
-  "tool_id": "tradingview_ai",
-  "device_name": "DESKTOP-ABC"
-}
-```
-
-* **Erfolg (200 OK):**
-  Liefert `{ "valid": true, "client_name": "...", "expires_at": "...", "days_left": 30, "token": "GRACE-..." }`
-* **Weitergabe blockiert (403 Forbidden):**
-  Liefert `{ "error": "DEVICE_LIMIT_REACHED", "detail": "Diese Lizenz ist bereits an einen anderen Computer gebunden." }`
+* **`signing_key.pem` ist unersetzlich.** Geht er verloren, prüft kein ausgelieferter Client mehr
+  erfolgreich; alle Tester brauchen eine neue Exe mit neuem öffentlichen Schlüssel. Die nächtliche
+  Sicherung (`scripts/backup.sh`) enthält `/srv/apps`; zusätzlich eine Kopie offline ablegen:
+  `scp vps:/srv/apps/auth-server/data/signing_key.pem <sicherer Ort>`.
+* **Admin-Token wechseln:** in `.env` ersetzen, `docker compose up -d` (Sitzungen enden dabei).
+* **Tests:** `pip install -r requirements-dev.txt && python -m pytest` (38 Tests, ohne Netzwerk).
+* **Audit-Log:** wird auf die letzten 50.000 Einträge begrenzt.

@@ -56,7 +56,7 @@ print_urls() {
     fqdn=$(env_value TS_FQDN)
     printf '\n  Erreichbar von jedem Geraet im Tailnet:\n'
     while read -r port target name <&3; do
-        [[ -z "$port" || "$port" == \#* ]] && continue
+        [[ -z "$port" || "$port" == \#* || "$port" == "funnel" ]] && continue
         if [[ "$port" == "443" ]]; then
             printf '    %-10s https://%s\n' "$name" "$fqdn"
         else
