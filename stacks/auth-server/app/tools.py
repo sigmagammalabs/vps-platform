@@ -16,6 +16,7 @@ UNIVERSAL_LABEL = "Alle Tools (Universal)"
 TOOLS: Dict[str, str] = {
     "tradingview_ai": "TradingView AI",
     "telefon_akquise": "BCS Telefon-Akquise & Lead-Cockpit",
+    "import_product_scout": "BCS Product-Import-Scout",
     "premarket-screener": "Pre-Market Screener",
     "arbitrage-scout": "Arbitrage Scout",
 }

@@ -102,6 +102,7 @@ Daraus entstehen Formular, Filter, Eingabeprüfung und Verifikation.
 |---|---|
 | `tradingview_ai` | TradingView AI |
 | `telefon_akquise` | BCS Telefon-Akquise & Lead-Cockpit |
+| `import_product_scout` | BCS Product-Import-Scout |
 | `premarket-screener` | Pre-Market Screener |
 | `arbitrage-scout` | Arbitrage Scout |
 | `all` | Universal-Lizenz: gilt für jedes Programm (nur als Lizenz-Typ) |
@@ -127,5 +128,5 @@ Regeln des Servers:
   Sicherung (`scripts/backup.sh`) enthält `/srv/apps`; zusätzlich eine Kopie offline ablegen:
   `scp vps:/srv/apps/auth-server/data/signing_key.pem <sicherer Ort>`.
 * **Admin-Token wechseln:** in `.env` ersetzen, `docker compose up -d` (Sitzungen enden dabei).
-* **Tests:** `pip install -r requirements-dev.txt && python -m pytest` (45 Tests, ohne Netzwerk).
+* **Tests:** `pip install -r requirements-dev.txt && python -m pytest` (46 Tests, ohne Netzwerk).
 * **Audit-Log:** wird auf die letzten 50.000 Einträge begrenzt.

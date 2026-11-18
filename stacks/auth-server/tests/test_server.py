@@ -432,9 +432,24 @@ def test_a_license_only_opens_its_own_program(client):
     assert verify(client, tradingview, tool="tradingview_ai").status_code == 200
 
 
+def test_product_import_scout_is_its_own_program(client, public_key):
+    scout = make_license(tool="import_product_scout")["license_key"]
+    assert tool_label("import_product_scout") == "BCS Product-Import-Scout"
+    data = verify(client, scout, tool="import_product_scout").json()
+    assert check_token(data["token"], public_key)["tool"] == "import_product_scout"
+    # Trennung in beide Richtungen: kein fremder Schluessel oeffnet den Scout und umgekehrt
+    for other in ("tradingview_ai", "telefon_akquise"):
+        assert_error(verify(client, scout, tool=other), 403, "WRONG_TOOL")
+        foreign = make_license(tool=other)["license_key"]
+        assert_error(verify(client, foreign, tool="import_product_scout"), 403, "WRONG_TOOL")
+    # Alias-Kennungen aus aelteren Client-Staenden sind unbekannt
+    for alias in ("product_import_scout", "import_scout"):
+        assert_error(verify(client, scout, tool=alias), 403, "WRONG_TOOL")
+
+
 def test_universal_license_opens_every_program(client, public_key):
     key = make_license(tool="all")["license_key"]
-    for tool in ("telefon_akquise", "tradingview_ai"):
+    for tool in ("telefon_akquise", "tradingview_ai", "import_product_scout"):
         data = verify(client, key, tool=tool).json()
         assert check_token(data["token"], public_key)["tool"] == tool  # Token nennt das angefragte Programm
 
