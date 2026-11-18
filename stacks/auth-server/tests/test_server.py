@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.security import AdminSessions, ConfigError, SlidingWindowLimiter, client_ip
 from app.signing import SigningKeyError
+from app.tools import TOOLS, UNIVERSAL, is_known_license_tool, tool_label, tool_options
 
 ADMIN_TOKEN = "Zk3pQ9vL2mXw8RtYb5NcH7sD4fGj1aEu"  # 32 Zeichen, nur fuer Tests
 HWID = "TVKI-AAAA-BBBB-CCCC-DDDD"
@@ -397,3 +398,99 @@ def test_client_ip_prefers_last_forwarded_entry():
     assert client_ip({"x-forwarded-for": "1.1.1.1, 2.2.2.2"}, "127.0.0.1") == "2.2.2.2"
     assert client_ip({}, "10.0.0.5") == "10.0.0.5"
     assert client_ip({}, None) == "unknown"
+
+
+# --- Mehrere Programme (Key-Verwaltung) ----------------------------------------------------
+
+def table_section(page: str) -> str:
+    """Nur die Lizenztabelle (das Audit-Log darunter nennt Namen und darf nicht mitzaehlen)."""
+    return page.split("Registrierte Lizenzen", 1)[1].split("</table>", 1)[0]
+
+
+def create_via_admin(client, csrf, name, tool):
+    form = {"csrf": csrf, "client_name": name, "tool_id": tool, "days_valid": "30", "max_devices": "1"}
+    assert client.post("/admin/create", data=form, follow_redirects=False).status_code == 303
+
+
+def test_registry_lists_every_licensed_program():
+    assert {"tradingview_ai", "telefon_akquise"} <= set(TOOLS)
+    assert tool_label("telefon_akquise") == "BCS Telefon-Akquise & Lead-Cockpit"
+    assert tool_label(UNIVERSAL) == "Alle Tools (Universal)"
+    assert tool_label("frueheres-tool") == "frueheres-tool"  # unbekannte IDs bleiben lesbar
+    assert is_known_license_tool(UNIVERSAL) and is_known_license_tool("telefon_akquise")
+    assert not is_known_license_tool("") and not is_known_license_tool("bcs_coldcall")
+    assert [o["id"] for o in tool_options()][0] == UNIVERSAL
+
+
+def test_a_license_only_opens_its_own_program(client):
+    tradingview = make_license(tool="tradingview_ai")["license_key"]
+    bcs = make_license(tool="telefon_akquise")["license_key"]
+    assert verify(client, bcs, tool="telefon_akquise").status_code == 200
+    # Kern der Trennung: weder der TradingView-Schluessel oeffnet BCS noch umgekehrt
+    assert_error(verify(client, tradingview, tool="telefon_akquise"), 403, "WRONG_TOOL")
+    assert_error(verify(client, bcs, tool="tradingview_ai"), 403, "WRONG_TOOL")
+    assert verify(client, tradingview, tool="tradingview_ai").status_code == 200
+
+
+def test_universal_license_opens_every_program(client, public_key):
+    key = make_license(tool="all")["license_key"]
+    for tool in ("telefon_akquise", "tradingview_ai"):
+        data = verify(client, key, tool=tool).json()
+        assert check_token(data["token"], public_key)["tool"] == tool  # Token nennt das angefragte Programm
+
+
+def test_unknown_or_universal_program_cannot_log_in(client):
+    key = make_license(tool="all")["license_key"]
+    for tool in ("bcs_coldcall", "all", "irgendwas"):
+        assert_error(verify(client, key, tool=tool), 403, "WRONG_TOOL")
+    # auch ohne gueltigen Schluessel: Programmfehler vor Schluesselpruefung, zaehlt nicht als Raten
+    assert_error(verify(client, "ACT-0000-0000-0000-0000", tool="irgendwas"), 403, "WRONG_TOOL")
+    for _ in range(12):
+        verify(client, "ACT-0000-0000-0000-0000", tool="irgendwas")
+    assert verify(client, key, tool="tradingview_ai").status_code == 200
+
+
+def test_admin_requires_an_explicit_program_choice(client):
+    login(client)
+    base = {"csrf": csrf_of(client), "client_name": "Anna Beispiel", "days_valid": "30", "max_devices": "1"}
+    assert client.post("/admin/create", data=base).status_code == 422  # gar kein Programm
+    assert client.post("/admin/create", data={**base, "tool_id": ""}).status_code == 422
+    assert client.post("/admin/create", data={**base, "tool_id": "gibt-es-nicht"}).status_code == 422
+    assert client.post("/admin/create", data={**base, "tool_id": "bcs_coldcall"}).status_code == 422
+    create_via_admin(client, base["csrf"], "Anna Beispiel", "telefon_akquise")
+    section = table_section(client.get("/admin").text)
+    assert "Anna Beispiel" in section and "BCS Telefon-Akquise &amp; Lead-Cockpit" in section
+
+
+def test_form_offers_every_program_but_preselects_none(client):
+    login(client)
+    select = client.get("/admin").text.split('name="tool_id"', 1)[1].split("</select>", 1)[0]
+    assert select.count("selected") == 1 and 'value="" disabled selected' in select  # nur der Platzhalter
+    assert " required" in client.get("/admin").text.split('name="tool_id"', 1)[1][:30]
+    for tool in [UNIVERSAL, *TOOLS]:
+        assert f'value="{tool}"' in select
+
+
+def test_dashboard_filters_the_table_by_program(client):
+    login(client)
+    token = csrf_of(client)
+    create_via_admin(client, token, "TV-Kunde", "tradingview_ai")
+    create_via_admin(client, token, "BCS-Mitarbeiter", "telefon_akquise")
+    create_via_admin(client, token, "Universal-Kunde", "all")
+
+    everything = table_section(client.get("/admin").text)
+    assert all(n in everything for n in ("TV-Kunde", "BCS-Mitarbeiter", "Universal-Kunde"))
+
+    only_bcs = table_section(client.get("/admin?tool=telefon_akquise").text)
+    assert "BCS-Mitarbeiter" in only_bcs
+    assert "TV-Kunde" not in only_bcs and "Universal-Kunde" not in only_bcs
+
+    only_universal = table_section(client.get("/admin?tool=all").text)
+    assert "Universal-Kunde" in only_universal and "BCS-Mitarbeiter" not in only_universal
+
+    unknown = table_section(client.get("/admin?tool=quatsch").text)  # ungueltiger Filter -> alles zeigen
+    assert all(n in unknown for n in ("TV-Kunde", "BCS-Mitarbeiter", "Universal-Kunde"))
+
+    page = client.get("/admin").text
+    assert "BCS Telefon-Akquise &amp; Lead-Cockpit (1)" in page and "Alle (3)" in page  # Zaehler je Programm
+

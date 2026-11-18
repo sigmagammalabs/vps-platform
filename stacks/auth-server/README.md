@@ -85,16 +85,47 @@ Zurücknehmen: Zeile wieder auskommentieren und `apply`, oder `tailscale funnel 
 Sitzung an einem Cookie (8 h, `HttpOnly`, `SameSite=Strict`); das Token steht nie in der URL.
 Formulare tragen ein CSRF-Feld. Für Skripte geht weiterhin `Authorization: Bearer <Token>`.
 
-* **Lizenz anlegen:** Name, Tool, Gültigkeit, Geräte-Limit.
+* **Lizenz anlegen:** Name, **Programm**, Gültigkeit, Geräte-Limit. Das Programm ist ein
+  Pflichtfeld **ohne Vorauswahl**; ein Schlüssel gilt nur für das gewählte Programm (oder für
+  alle, bei „Alle Tools“). Der Name erscheint im Programm, im BCS-Cockpit als aktiver Bearbeiter.
+* **Filter:** Über der Tabelle zeigt je Programm ein Knopf die Zahl der Lizenzen; ein Klick
+  filtert die Tabelle (`/admin?tool=telefon_akquise`).
 * **HW-Reset:** gibt die gebundenen PCs frei (neuer Rechner des Kunden).
 * **Sperren:** wirkt beim nächsten Abgleich des Clients (spätestens nach 24 h online).
 
-## 6. Sicherung und Betrieb
+## 6. Programme (mehrere Tools über einen Server)
+
+Welche Programme es gibt, steht **nur** in `app/tools.py` (`TOOLS`: Kennung → Bezeichnung).
+Daraus entstehen Formular, Filter, Eingabeprüfung und Verifikation.
+
+| Kennung (`tool_id`) | Programm |
+|---|---|
+| `tradingview_ai` | TradingView AI |
+| `telefon_akquise` | BCS Telefon-Akquise & Lead-Cockpit |
+| `premarket-screener` | Pre-Market Screener |
+| `arbitrage-scout` | Arbitrage Scout |
+| `all` | Universal-Lizenz: gilt für jedes Programm (nur als Lizenz-Typ) |
+
+Regeln des Servers:
+
+* Ein Programm meldet sich mit **seiner eigenen** Kennung. Passt sie nicht zur Lizenz, kommt
+  `403 WRONG_TOOL`: Ein TradingView-Schlüssel öffnet kein BCS und umgekehrt.
+* Unbekannte Kennungen und `all` als angefragtes Programm werden mit `WRONG_TOOL` abgewiesen,
+  noch bevor der Schlüssel geprüft wird (zählt nicht als Raten).
+* Das signierte Token nennt das **angefragte** Programm (`tool`); der Client prüft es auf
+  genau seine Kennung. Ein Client darf deshalb **keine** weiteren Kennungen akzeptieren und
+  bei `WRONG_TOOL` **nicht** mit einer anderen Kennung erneut anfragen.
+
+**Neues Programm anbinden:** Eintrag in `TOOLS` ergänzen, Server neu starten
+(`docker compose up -d --build`), im Client dieselbe Kennung als feste Konstante eintragen
+(keine Umgebungsvariable). Danach erscheint es im Dashboard.
+
+## 7. Sicherung und Betrieb
 
 * **`signing_key.pem` ist unersetzlich.** Geht er verloren, prüft kein ausgelieferter Client mehr
   erfolgreich; alle Tester brauchen eine neue Exe mit neuem öffentlichen Schlüssel. Die nächtliche
   Sicherung (`scripts/backup.sh`) enthält `/srv/apps`; zusätzlich eine Kopie offline ablegen:
   `scp vps:/srv/apps/auth-server/data/signing_key.pem <sicherer Ort>`.
 * **Admin-Token wechseln:** in `.env` ersetzen, `docker compose up -d` (Sitzungen enden dabei).
-* **Tests:** `pip install -r requirements-dev.txt && python -m pytest` (38 Tests, ohne Netzwerk).
+* **Tests:** `pip install -r requirements-dev.txt && python -m pytest` (45 Tests, ohne Netzwerk).
 * **Audit-Log:** wird auf die letzten 50.000 Einträge begrenzt.

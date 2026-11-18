@@ -11,7 +11,6 @@ Nur im Tailnet:
 import html
 import logging
 import os
-import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +43,7 @@ from .security import (
     load_settings,
 )
 from .signing import Signer
+from .tools import TOOLS, UNIVERSAL, is_known_license_tool, tool_label, tool_options
 
 log = logging.getLogger("uvicorn.error")
 
@@ -53,7 +53,6 @@ MAX_BODY_BYTES = 8 * 1024
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_SECONDS = 8 * 3600
 VALID_STATUSES = {"active", "suspended"}
-TOOL_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 
 # Kein Geheimnis: erlaubte Host-Header (Tailnet-Name, lokal fuer Health-Check).
 ALLOWED_HOSTS = [
@@ -186,6 +185,13 @@ async def verify_license(req: VerifyRequest, request: Request):
 
     key_for_log = req.license_key.strip()[:40]
     clean_hwid = req.hwid.strip().upper()
+
+    # Ein Programm meldet sich mit seiner eigenen Kennung. "all" gibt es nur als Lizenz-Typ,
+    # unbekannte Kennungen sind ein Fehler im Client - beides vor jeder Schluesselpruefung.
+    if req.tool_id not in TOOLS:
+        log_audit(key_for_log, clean_hwid, req.tool_id[:40], "REJECT_UNKNOWN_TOOL", ip, "Programm nicht in der Liste")
+        raise ApiError(403, "WRONG_TOOL", "Dieses Programm ist auf dem Lizenzserver nicht bekannt.")
+
     lic = get_license_by_key(req.license_key)
 
     if not lic:
@@ -320,7 +326,7 @@ def require_admin(request: Request, csrf: str = "") -> None:
 
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
+async def admin_dashboard(request: Request, tool: Optional[str] = None):
     bearer = _bearer_ok(request)
     csrf = ""
     if not bearer:
@@ -330,13 +336,30 @@ async def admin_dashboard(request: Request):
         csrf = expected
 
     all_lics = list_licenses()
+    for lic in all_lics:
+        lic["tool_label"] = tool_label(lic["tool_id"])
+    # Filter nur fuer bekannte Programme; alles andere zeigt die ganze Liste.
+    selected_tool = tool if tool and is_known_license_tool(tool) else ""
+    shown = [lic for lic in all_lics if lic["tool_id"] == selected_tool] if selected_tool else all_lics
+    tool_stats = [
+        {
+            "id": opt["id"],
+            "label": opt["label"],
+            "total": sum(1 for lic in all_lics if lic["tool_id"] == opt["id"]),
+            "active": sum(1 for lic in all_lics if lic["tool_id"] == opt["id"] and lic["status"] == "active"),
+        }
+        for opt in tool_options()
+    ]
     return templates.TemplateResponse(
         request,
         "admin.html",
         {
             "csrf": csrf,
             "host": request.headers.get("host", ""),
-            "licenses": all_lics,
+            "licenses": shown,
+            "tool_options": tool_options(),
+            "tool_stats": tool_stats,
+            "selected_tool": selected_tool,
             "total_licenses": len(all_lics),
             "active_licenses": sum(1 for lic in all_lics if lic["status"] == "active"),
             "total_devices": sum(len(lic["devices"]) for lic in all_lics),
@@ -387,7 +410,7 @@ async def admin_create_license(
     request: Request,
     csrf: str = Form(""),
     client_name: str = Form(...),
-    tool_id: str = Form("tradingview_ai"),
+    tool_id: str = Form(""),
     days_valid: int = Form(30),
     max_devices: int = Form(1),
     notes: str = Form(""),
@@ -396,8 +419,8 @@ async def admin_create_license(
     name = client_name.strip()
     if not 2 <= len(name) <= 150:
         raise ApiError(422, "BAD_REQUEST", "Name: 2 bis 150 Zeichen.")
-    if not TOOL_ID_PATTERN.match(tool_id):
-        raise ApiError(422, "BAD_REQUEST", "Ungueltige Tool-ID.")
+    if not is_known_license_tool(tool_id):
+        raise ApiError(422, "BAD_REQUEST", "Bitte ein Programm aus der Liste waehlen.")
     if not 0 <= days_valid <= 3650:
         raise ApiError(422, "BAD_REQUEST", "Gueltigkeit: 0 (unbegrenzt) bis 3650 Tage.")
     if not 1 <= max_devices <= 10:

@@ -72,6 +72,19 @@
       align-items: center;
       gap: 12px;
     }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px 0; }
+    .chip {
+      background: #1d2533;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      font-size: 13px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      text-decoration: none;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--text-bright); }
+    .chip.on { background: var(--accent); border-color: var(--accent); color: var(--text-bright); }
+    .hint { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
     .host-pill {
       background: #1d2533;
       border: 1px solid var(--card-border);
@@ -296,17 +309,19 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <div class="form-grid">
         <div class="form-group">
-          <label>Kunde / Tester-Name:</label>
+          <label>Name (Kunde, Tester oder Mitarbeiter):</label>
           <input type="text" name="client_name" placeholder="z. B. Max Mustermann" required>
+          <small class="hint">Erscheint im Programm, im BCS-Cockpit als aktiver Bearbeiter.</small>
         </div>
         <div class="form-group">
-          <label>Ziel-Tool:</label>
-          <select name="tool_id">
-            <option value="all">Alle Tools (Universal)</option>
-            <option value="tradingview_ai" selected>TradingView AI</option>
-            <option value="premarket-screener">Pre-Market Screener</option>
-            <option value="arbitrage-scout">Arbitrage Scout</option>
+          <label>Programm:</label>
+          <select name="tool_id" required>
+            <option value="" disabled selected>— Programm wählen —</option>
+            {% for opt in tool_options %}
+            <option value="{{ opt.id }}">{{ opt.label }}</option>
+            {% endfor %}
           </select>
+          <small class="hint">Ein Schlüssel gilt nur für das gewählte Programm.</small>
         </div>
         <div class="form-group">
           <label>Gültigkeit (Tage):</label>
@@ -334,6 +349,12 @@
   <!-- Tabelle aller Lizenzen -->
   <div class="card">
     <h2 class="card-title">🔑 Registrierte Lizenzen & Hardware-Bindungen</h2>
+    <div class="chips">
+      <a class="chip {{ 'on' if not selected_tool else '' }}" href="/admin">Alle ({{ total_licenses }})</a>
+      {% for t in tool_stats %}
+      <a class="chip {{ 'on' if selected_tool == t.id else '' }}" href="/admin?tool={{ t.id }}">{{ t.label }} ({{ t.total }})</a>
+      {% endfor %}
+    </div>
     <table>
       <thead>
         <tr>
@@ -358,7 +379,7 @@
             <strong>{{ lic.client_name }}</strong>
             {% if lic.notes %}<br><small style="color: var(--muted);">{{ lic.notes }}</small>{% endif %}
           </td>
-          <td><code>{{ lic.tool_id }}</code></td>
+          <td>{{ lic.tool_label }}<br><small style="color: var(--muted);"><code>{{ lic.tool_id }}</code></small></td>
           <td>
             {% if lic.status == 'active' %}
               <span class="badge active">🟢 Aktiv</span>
